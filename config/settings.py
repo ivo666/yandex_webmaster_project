@@ -18,9 +18,9 @@ class Settings:
     DB_USER = os.getenv('DB_USER', 'postgres')
     DB_PASSWORD = os.getenv('DB_PASSWORD', '')
 
-    # API - НОВЫЕ ДАННЫЕ ДЛЯ profi-filter.ru
+    # API - ИСПРАВЛЕНО: используем v4 вместо v4.2
     API_TOKEN = os.getenv('API_TOKEN', '')
-    BASE_URL = os.getenv('BASE_URL', 'https://api.webmaster.yandex.net/v4.2')
+    BASE_URL = os.getenv('BASE_URL', 'https://api.webmaster.yandex.net/v4')  # v4!
     USER_ID = os.getenv('USER_ID', '238948933')
     HOST_ID = os.getenv('HOST_ID', 'https:profi-filter.ru:443')
 

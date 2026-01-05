@@ -13,11 +13,11 @@ from config.settings import settings
 Base = declarative_base()
 
 class WebmasterData(Base):
-    """Модель для данных Яндекс.Вебмастер"""
-    __tablename__ = 'webmaster'  # Имя таблицы в БД
+    """Модель для данных Яндекс.Вебмастер - соответствует таблице rdl.webm_api"""
+    __tablename__ = 'webm_api'  # Имя таблицы в БД - ИЗМЕНЕНО!
     __table_args__ = (
         PrimaryKeyConstraint('date', 'page_path', 'query', 'device'),
-        {'schema': 'rdl'}  # Схема в БД - СЛОЙ RDL!
+        {'schema': 'rdl'}  # Схема в БД
     )
 
     date = Column(Date, nullable=False)
