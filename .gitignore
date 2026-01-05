@@ -49,4 +49,4 @@ config/local.yaml
 # Data
 data/
 *.db
-*.sqlite
+*.sqlite.env
