@@ -1,36 +1,32 @@
 #!/usr/bin/env python3
-"""Run Webmaster ETL process."""
+"""Скрипт запуска ETL процесса"""
 import sys
-import os
-import logging
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
-# Add src to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
-
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+from src.core.database import DatabaseManager
+from src.etl.webmaster_etl_processor import WebmasterETLProcessor
 
 def main():
-    """Main function."""
-    from etl.webmaster_processor import WebmasterETLProcessor
+    """Основная функция"""
+    print("🚀 Запуск ETL процесса...")
     
-    logger = logging.getLogger(__name__)
-    logger.info("=" * 60)
-    logger.info("WEBMASTER ETL PROCESSOR")
-    logger.info("=" * 60)
+    db_manager = DatabaseManager()
+    processor = WebmasterETLProcessor(db_manager)
     
-    processor = WebmasterETLProcessor()
-    result = processor.run_etl()
+    # Проверяем статус
+    status = processor.get_processing_status()
+    print(f"📊 Статус:")
+    print(f"   RDL последняя дата: {status['last_rdl_date']}")
+    print(f"   PPL последняя дата: {status['last_ppl_date']}")
+    print(f"   Необработанных: {status['unprocessed_count']}")
     
-    if result > 0:
-        logger.info(f"✅ Successfully processed {result} rows")
+    if status['needs_processing']:
+        print("⚡ Запуск инкрементальной обработки...")
+        result = processor.process_incremental()
+        print(f"✅ Результат: {result['aggregated_inserted']} записей обработано")
     else:
-        logger.info("✅ No new data to process")
-    
-    logger.info("=" * 60)
+        print("✅ Данные актуальны, обработка не требуется")
 
 if __name__ == "__main__":
     main()
