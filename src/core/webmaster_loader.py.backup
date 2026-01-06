@@ -1,44 +1,31 @@
-"""Yandex Webmaster data loader with ID support."""
+"""Yandex Webmaster data loader."""
 import requests
 import logging
-import psycopg2
 from typing import List, Dict, Any
 from datetime import datetime
-import os
-from dotenv import load_dotenv
 
-# Загружаем переменные окружения из .env
-env_path = '/home/pf-server/yandex_webmaster_project/.env'
-load_dotenv(env_path)
+from config.settings import settings
+from models.database import get_db, WebmasterData
 
 logger = logging.getLogger(__name__)
 
-def get_psycopg2_connection():
-    """Создает подключение через psycopg2."""
-    return psycopg2.connect(
-        dbname=os.getenv('DB_NAME', 'yandex_webmaster'),
-        user=os.getenv('DB_USER', 'postgres'),
-        password=os.getenv('DB_PASSWORD', ''),
-        host=os.getenv('DB_HOST', 'localhost'),
-        port=int(os.getenv('DB_PORT', 5432))
-    )
 
 class WebmasterDataLoader:
-    """Загрузчик данных из Яндекс.Вебмастер API с поддержкой ID."""
-
+    """Загрузчик данных из Яндекс.Вебмастер API."""
+    
     def __init__(self):
-        self.base_url = os.getenv('BASE_URL', 'https://api.webmaster.yandex.net/v4')
+        self.base_url = settings.api.base_url
         self.headers = {
-            "Authorization": f"OAuth {os.getenv('API_TOKEN', '')}",
+            "Authorization": f"OAuth {settings.api.token}",
             "Content-Type": "application/json"
         }
-        self.user_id = os.getenv('USER_ID', '238948933')
-        self.host_id = os.getenv('HOST_ID', 'https:profi-filter.ru:443')
-
+        self.user_id = settings.api.user_id
+        self.host_id = settings.api.host_id
+    
     def get_all_urls_for_date(self, target_date: str) -> List[str]:
         """Получает все уникальные URL для указанной даты"""
         logger.debug(f"Получение URL для даты: {target_date}")
-
+        
         url = f"{self.base_url}/user/{self.user_id}/hosts/{self.host_id}/query-analytics/list"
         urls = set()
         offset = 0
@@ -64,7 +51,7 @@ class WebmasterDataLoader:
                 logger.debug(f"Отправка запроса: offset={offset}, limit={limit}")
                 response = requests.post(url, headers=self.headers, json=payload, timeout=30)
                 logger.debug(f"Статус ответа: {response.status_code}")
-
+                
                 if response.status_code == 200:
                     data = response.json()
                     stats_list = data.get('text_indicator_to_statistics', [])
@@ -94,7 +81,7 @@ class WebmasterDataLoader:
     def get_queries_for_url_and_date(self, target_date: str, page_url: str, device: str) -> List[Dict[str, Any]]:
         """Получает запросы для URL и устройства."""
         logger.debug(f"Получение запросов для URL: {page_url}, устройство: {device}")
-
+        
         url = f"{self.base_url}/user/{self.user_id}/hosts/{self.host_id}/query-analytics/list"
         payload = {
             "limit": 500,
@@ -106,26 +93,27 @@ class WebmasterDataLoader:
                     "operation": "TEXT_MATCH",
                     "value": page_url
                 }]
+                # УБИРАЕМ фильтр DEMAND > 0 - сохраняем все данные
             }
         }
-
+        
         try:
             response = requests.post(url, headers=self.headers, json=payload, timeout=30)
             logger.debug(f"Статус ответа: {response.status_code}")
-
+            
             if response.status_code == 200:
                 data = response.json()
                 data_rows = []
-
+                
                 for item in data.get('text_indicator_to_statistics', []):
                     query_text = item.get('text_indicator', {}).get('value', 'N/A')
                     metrics = {}
-
+                    
                     for stat in item.get('statistics', []):
                         if stat.get('date') == target_date:
                             metrics[stat.get('field')] = stat.get('value', 0)
-
-                    # Сохраняем ВСЕ данные, даже с DEMAND = 0 (фильтровать будем позже)
+                    
+                    # Сохраняем ВСЕ данные, даже с DEMAND = 0
                     data_rows.append({
                         'date': datetime.strptime(target_date, '%Y-%m-%d').date(),
                         'page_path': page_url,
@@ -136,100 +124,74 @@ class WebmasterDataLoader:
                         'position': float(metrics.get('POSITION', 0)),
                         'device': device.lower()
                     })
-
+                
                 logger.debug(f"Найдено записей: {len(data_rows)}")
                 return data_rows
             else:
                 logger.error(f"Ошибка {response.status_code}: {response.text[:200]}")
                 return []
-
+                
         except Exception as e:
             logger.error(f"Ошибка: {e}")
             return []
 
     def save_to_database(self, records: List[Dict[str, Any]]) -> int:
-        """Сохраняет записи в базу данных через psycopg2."""
+        """Сохраняет записи в базу данных."""
         if not records:
             return 0
-
-        saved_count = 0
-        conn = None
-        cursor = None
         
+        saved_count = 0
         try:
-            conn = get_psycopg2_connection()
-            cursor = conn.cursor()
-            
-            # Новая версия без ON CONFLICT (разрешаем дубликаты)
-            insert_sql = """
-            INSERT INTO rdl.webm_api 
-            (date, page_path, query, demand, impressions, clicks, position, device)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-            """
-            
-            # Подготавливаем данные
-            data_tuples = []
-            for record in records:
-                # Фильтруем записи с demand > 0
-                if record['demand'] > 0:
-                    data_tuples.append((
-                        record['date'],
-                        record['page_path'],
-                        record['query'],
-                        record['demand'],
-                        record['impressions'],
-                        record['clicks'],
-                        record['position'],
-                        record['device']
-                    ))
-            
-            if data_tuples:
-                cursor.executemany(insert_sql, data_tuples)
-                saved_count = cursor.rowcount
-                conn.commit()
+            with get_db() as db:
+                for record_data in records:
+                    # Проверяем дубликаты
+                    exists = db.query(WebmasterData).filter(
+                        WebmasterData.date == record_data['date'],
+                        WebmasterData.page_path == record_data['page_path'],
+                        WebmasterData.query == record_data['query'],
+                        WebmasterData.device == record_data['device']
+                    ).first()
+
+                    if not exists:
+                        record = WebmasterData(**record_data)
+                        db.add(record)
+                        saved_count += 1
+                
                 logger.info(f"Сохранено {saved_count} новых записей")
-            else:
-                logger.info("Нет записей с demand > 0 для сохранения")
                 
         except Exception as e:
-            if conn:
-                conn.rollback()
             logger.error(f"Ошибка при сохранении: {e}")
-            raise e
-        finally:
-            if cursor:
-                cursor.close()
-            if conn:
-                conn.close()
         
         return saved_count
-
+    
     def load_date(self, target_date: str) -> int:
         """Загружает данные за указанную дату."""
         logger.info(f"Загрузка данных за {target_date}")
-
+        
         # 1. Получаем URL
         urls = self.get_all_urls_for_date(target_date)
         logger.info(f"Найдено URL: {len(urls)}")
-
+        
         if not urls:
             return 0
-
+        
         # 2. Для каждого URL получаем данные
         all_records = []
         device_types = ['DESKTOP', 'MOBILE', 'TABLET']
-
+        
         for i, page_url in enumerate(urls, 1):
             logger.debug(f"Обработка URL {i}/{len(urls)}: {page_url[:50]}...")
-
+            
             for device in device_types:
                 records = self.get_queries_for_url_and_date(target_date, page_url, device)
-                all_records.extend(records)
-
-        # 3. Сохраняем в БД (с фильтрацией demand > 0 внутри save_to_database)
+                # Фильтруем записи с demand > 0
+                filtered_records = [r for r in records if r['demand'] > 0]
+                all_records.extend(filtered_records)
+        
+        # 3. Сохраняем в БД
         if all_records:
             saved = self.save_to_database(all_records)
             logger.info(f"Итого сохранено записей за {target_date}: {saved}")
             return saved
-
+        
         return 0

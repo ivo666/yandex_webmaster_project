@@ -1,24 +1,28 @@
 import requests
 from typing import List, Dict, Any
 from datetime import datetime
-import sys
+import os
+from dotenv import load_dotenv
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
-from config.settings import settings
+# Загружаем .env
+project_root = Path(__file__).parent.parent.parent
+env_path = project_root / '.env'
+load_dotenv(env_path)
 
 
 class WebmasterClient:
     def __init__(self):
-        self.base_url = settings.api.base_url  # Теперь будет v4
+        self.base_url = os.getenv('BASE_URL', 'https://api.webmaster.yandex.net/v4')
         self.headers = {
-            'Authorization': f'OAuth {settings.api.token}',
+            'Authorization': f'OAuth {os.getenv("API_TOKEN", "")}',
             'Content-Type': 'application/json'
         }
-        self.user_id = settings.api.user_id
-        self.host_id = settings.api.host_id
+        self.user_id = os.getenv('USER_ID', '238948933')
+        self.host_id = os.getenv('HOST_ID', 'https:profi-filter.ru:443')
 
     def check_date_has_data(self, target_date: str) -> bool:
+        """Проверяет есть ли данные за указанную дату в Яндекс.Вебмастер."""
         # В API v4 endpoint может отличаться от v4.2
         # Пробуем стандартный endpoint
         url = f'{self.base_url}/user/{self.user_id}/hosts/{self.host_id}/search-queries'
@@ -29,7 +33,7 @@ class WebmasterClient:
         }
 
         try:
-            response = requests.get(url, headers=self.headers, params=params)
+            response = requests.get(url, headers=self.headers, params=params, timeout=10)
             if response.status_code == 200:
                 data = response.json()
                 # В v4 структура ответа может быть другой
@@ -56,7 +60,7 @@ class WebmasterClient:
             }
 
             try:
-                response = requests.get(url, headers=self.headers, params=params)
+                response = requests.get(url, headers=self.headers, params=params, timeout=30)
                 if response.status_code == 200:
                     data = response.json()
                     queries = data.get('queries', [])
@@ -96,7 +100,7 @@ class WebmasterClient:
         data_rows = []
 
         try:
-            response = requests.get(url, headers=self.headers, params=params)
+            response = requests.get(url, headers=self.headers, params=params, timeout=30)
             if response.status_code == 200:
                 data = response.json()
                 for query in data.get('queries', []):
