@@ -59,3 +59,11 @@ def get_db() -> Generator:
 def create_tables():
     """Создает таблицы в БД (если нужно)"""
     Base.metadata.create_all(bind=engine)
+
+# Импортируем ppl модели
+from models.ppl.models import WebmasterAggregated, WebmasterPositions, WebmasterClicks
+
+# Функция для создания всех таблиц
+def create_all_tables():
+    """Create all tables for both rdl and ppl layers."""
+    Base.metadata.create_all(bind=engine)
