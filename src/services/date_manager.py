@@ -23,7 +23,7 @@ settings = Settings()
 
 # Импортируем после загрузки настроек
 import psycopg2
-from api.webmaster_client import WebmasterClient
+from ..api.webmaster_client import WebmasterClient
 
 
 class DateManager:

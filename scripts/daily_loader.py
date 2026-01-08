@@ -1,40 +1,42 @@
 #!/usr/bin/env python3
-"""Ежедневный загрузчик данных Яндекс.Вебмастер."""
+"""Ежедневная загрузка данных из Яндекс.Вебмастер API."""
 import sys
 import os
 import logging
 from datetime import datetime, timedelta
 
-# Добавляем путь
-sys.path.insert(0, '/home/pf-server/yandex_webmaster_project/src')
+# Добавляем родительскую директорию в путь для импорта модулей
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(current_dir)
+sys.path.insert(0, parent_dir)
 
-# Настраиваем логирование
+from src.services.date_manager import DateManager
+from src.api.webmaster_client import WebmasterClient
+from src.core.webmaster_loader import WebmasterDataLoader
+
+# Настройка логирования
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler('/home/pf-server/yandex_webmaster_project/logs/daily_loader.log'),
+        logging.FileHandler('logs/daily_loader.log'),
         logging.StreamHandler()
     ]
 )
-
 logger = logging.getLogger(__name__)
 
 def main():
     """Основная функция."""
-    print('=' * 70)
-    print('ЕЖЕДНЕВНАЯ ЗАГРУЗКА ДАННЫХ ЯНДЕКС.ВЕБМАСТЕР')
-    print('=' * 70)
+    logger.info('=' * 70)
+    logger.info('ЕЖЕДНЕВНАЯ ЗАГРУЗКА ДАННЫХ ЯНДЕКС.ВЕБМАСТЕР')
+    logger.info('=' * 70)
     
     try:
-        from services.date_manager import DateManager
-        from api.webmaster_client import WebmasterClient
-        from core.webmaster_loader import WebmasterDataLoader
-        
+        # Инициализация компонентов
         logger.info('Инициализация компонентов...')
         client = WebmasterClient()
         date_manager = DateManager(client)
-        loader = WebmasterDataLoader()
+        data_loader = WebmasterDataLoader()
         
         # 1. Проверяем недостающие даты
         logger.info('Поиск недостающих дат...')
@@ -56,41 +58,31 @@ def main():
             print(f'\n[{i}/{len(missing_dates)}] 📥 Загрузка {date_str}...')
             
             try:
-                loaded_count = loader.load_date(date_str)
+                loaded_count = data_loader.load_date(date_str)
                 total_loaded += loaded_count
-                
-                logger.info(f'Загружено записей за {date_str}: {loaded_count}')
-                print(f'   ✅ Загружено записей: {loaded_count}')
+                logger.info(f'Загружено {loaded_count} записей за {date_str}')
+                print(f'   ✅ Загружено: {loaded_count} записей')
                 
             except Exception as e:
-                logger.error(f'Ошибка при загрузке {date_str}: {e}')
+                logger.error(f'Ошибка загрузки данных за {date_str}: {e}')
                 print(f'   ❌ Ошибка: {e}')
-                # Продолжаем со следующей датой
+                continue
         
         # 3. Финальный отчет
         print('\n' + '=' * 70)
         print('📊 ФИНАЛЬНЫЙ ОТЧЕТ:')
         print(f'   - Обработано дат: {len(missing_dates)}')
         print(f'   - Загружено записей: {total_loaded}')
+        print('=' * 70)
         
-        if total_loaded > 0:
-            print('✅ ЗАГРУЗКА УСПЕШНО ЗАВЕРШЕНА')
-        else:
-            print('⚠️  Нет новых данных для загрузки')
-        
+        logger.info(f'Загрузка завершена. Всего загружено: {total_loaded} записей')
         return total_loaded
         
     except Exception as e:
-        logger.error(f'Критическая ошибка: {e}')
+        logger.error(f'Критическая ошибка: {e}', exc_info=True)
         print(f'\n❌ КРИТИЧЕСКАЯ ОШИБКА: {e}')
-        import traceback
-        traceback.print_exc()
-        return 0
+        return -1
 
-if __name__ == "__main__":
-    # Создаем папку для логов если её нет
-    log_dir = '/home/pf-server/yandex_webmaster_project/logs'
-    os.makedirs(log_dir, exist_ok=True)
-    
+if __name__ == '__main__':
     result = main()
     sys.exit(0 if result >= 0 else 1)
